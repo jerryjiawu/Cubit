@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cubit Sensor Dashboard</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .sensor-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .coin-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        h1 {
+            color: #4a5568;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 300;
+            text-align: center;
+        }
+
+        h2 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            font-weight: 400;
+        }
+
+        .sensor-value {
+            font-size: 3em;
+            font-weight: bold;
+            color: #4299e1;
+            text-align: center;
+            margin: 20px 0;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .high-stat .stat-value { color: #48bb78; }
+        .low-stat .stat-value { color: #ed8936; }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            flex: 1;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+            color: white;
+            flex: 1;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .coin {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            margin: 30px auto;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            border: 5px solid #f6e05e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #744210;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .coin:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .coin.flipping {
+            animation: flip 2s ease-in-out;
+            pointer-events: none;
+        }
+
+        @keyframes flip {
+            0% { transform: rotateY(0deg) rotateX(0deg); }
+            25% { transform: rotateY(180deg) rotateX(180deg) scale(1.1); }
+            50% { transform: rotateY(360deg) rotateX(360deg) scale(1.2); }
+            75% { transform: rotateY(540deg) rotateX(540deg) scale(1.1); }
+            100% { transform: rotateY(720deg) rotateX(720deg) scale(1); }
+        }
+
+        .coin.heads {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            border-color: #2b6cb0;
+            color: white;
+        }
+
+        .coin.tails {
+            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+            border-color: #c05621;
+            color: white;
+        }
+
+        .flip-result {
+            font-size: 1.5em;
+            margin: 20px 0;
+            min-height: 2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+        }
+
+        .flip-button {
+            background: linear-gradient(135deg, #805ad5 0%, #6b46c1 100%);
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            margin-top: 20px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 10px;
+        }
+
+        .status-online { background: #48bb78; }
+        .status-offline { background: #f56565; }
+
+        .timestamp {
+            font-size: 0.9em;
+            color: #718096;
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .sensor-details {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            
+            .coin {
+                width: 150px;
+                height: 150px;
+                font-size: 1em;
+            }
+            
+            h1 { font-size: 2em; }
+            .sensor-value { font-size: 2.5em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sensor Data Panel -->
+        <div class="card sensor-panel">
+            <div>
+                <h2>Live Sensor Data 
+                    <span class="status-indicator" id="statusIndicator"></span>
+                </h2>
+                
+                <div class="sensor-value" id="sensorValue">0</div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card high-stat">
+                        <div class="stat-value" id="highPercentage">0%</div>
+                        <div class="stat-label">High Readings</div>
+                        <div style="font-size: 0.8em; color: #718096;" id="highCount">(0)</div>
+                    </div>
+                    <div class="stat-card low-stat">
+                        <div class="stat-value" id="lowPercentage">0%</div>
+                        <div class="stat-label">Low Readings</div>
+                        <div style="font-size: 0.8em; color: #718096;" id="lowCount">(0)</div>
+                    </div>
+                </div>
+                
+                <div class="sensor-details">
+                    <div>Total Readings: <span id="totalCount">0</span></div>
+                    <div>Hardware State: <span id="hardwareState">0</span></div>
+                    <div>Midpoint: <span id="midpoint">512</span></div>
+                </div>
+                
+                <div class="timestamp" id="timestamp">--:--:--</div>
+            </div>
+            
+            <div class="control-buttons">
+                <button class="btn-start" onclick="startSensor()">Start Sensor</button>
+                <button class="btn-stop" onclick="stopSensor()">Stop Sensor</button>
+            </div>
+        </div>
+
+        <!-- Coin Flip Panel -->
+        <div class="card coin-panel">
+            <h2>Quantum Coin Flip</h2>
+            <p style="margin-bottom: 20px; color: #718096;">
+                Click the coin to flip based on real sensor data!
+            </p>
+            
+            <div class="coin" id="coin" onclick="flipCoin()">
+                Click to Flip
+            </div>
+            
+            <div class="flip-result" id="flipResult">
+                Ready to flip!
+            </div>
+            
+            <button class="flip-button" onclick="flipCoin()">Flip Coin</button>
+            
+            <div style="margin-top: 30px; font-size: 0.9em; color: #718096;">
+                <p><strong>How it works:</strong></p>
+                <p>The coin flip uses live sensor readings to determine the result. 
+                Values above the midpoint result in "Heads", below result in "Tails".</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let isFlipping = false;
+
+        // Socket.IO event handlers
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            updateStatus(true);
+        });
+
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+            updateStatus(false);
+        });
+
+        socket.on('sensor_data', function(data) {
+            updateSensorDisplay(data);
+        });
+
+        function updateSensorDisplay(data) {
+            document.getElementById('sensorValue').textContent = data.sensor_value || 0;
+            document.getElementById('highPercentage').textContent = `${data.high_percentage || 0}%`;
+            document.getElementById('lowPercentage').textContent = `${data.low_percentage || 0}%`;
+            document.getElementById('highCount').textContent = `(${data.high_count || 0})`;
+            document.getElementById('lowCount').textContent = `(${data.low_count || 0})`;
+            document.getElementById('totalCount').textContent = data.total_count || 0;
+            document.getElementById('hardwareState').textContent = data.hardware_state || '0';
+            document.getElementById('midpoint').textContent = data.midpoint || 512;
+            document.getElementById('timestamp').textContent = data.timestamp || '--:--:--';
+        }
+
+        function updateStatus(online) {
+            const indicator = document.getElementById('statusIndicator');
+            indicator.className = online ? 'status-indicator status-online' : 'status-indicator status-offline';
+        }
+
+        async function startSensor() {
+            try {
+                const response = await fetch('/api/start');
+                const result = await response.json();
+                if (result.error) {
+                    alert('Error starting sensor: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error starting sensor: ' + error.message);
+            }
+        }
+
+        async function stopSensor() {
+            try {
+                const response = await fetch('/api/stop');
+                const result = await response.json();
+                console.log('Sensor stopped:', result);
+            } catch (error) {
+                alert('Error stopping sensor: ' + error.message);
+            }
+        }
+
+        async function flipCoin() {
+            if (isFlipping) return;
+            
+            isFlipping = true;
+            const coin = document.getElementById('coin');
+            const result = document.getElementById('flipResult');
+            
+            // Start flip animation
+            coin.classList.add('flipping');
+            coin.textContent = 'Flipping...';
+            result.textContent = 'Reading sensor...';
+            
+            try {
+                const response = await fetch('/api/coin-flip');
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Wait for animation to complete
+                setTimeout(() => {
+                    coin.classList.remove('flipping');
+                    coin.classList.remove('heads', 'tails');
+                    coin.classList.add(data.result);
+                    coin.textContent = data.result.toUpperCase();
+                    
+                    result.innerHTML = `
+                        <strong>${data.result.toUpperCase()}!</strong><br>
+                        <small>Sensor: ${data.sensor_value} | Midpoint: ${data.midpoint} | ${data.timestamp}</small>
+                    `;
+                    
+                    isFlipping = false;
+                }, 2000);
+                
+            } catch (error) {
+                setTimeout(() => {
+                    coin.classList.remove('flipping');
+                    coin.textContent = 'Error';
+                    result.textContent = 'Error: ' + error.message;
+                    isFlipping = false;
+                }, 2000);
+            }
+        }
+
+        // Initial data fetch
+        fetch('/api/sensor-data')
+            .then(response => response.json())
+            .then(data => updateSensorDisplay(data))
+            .catch(error => console.error('Error fetching initial data:', error));
+    </script>
+</body>
+</html>
